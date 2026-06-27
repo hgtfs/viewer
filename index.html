@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>HGTFS Viewer — la rete ferroviaria italiana nel tempo</title>
+  <meta name="description" content="Visualizzatore time-aware per HGTFS: scorri gli anni e guarda la rete ferroviaria aprirsi, chiudersi e cambiare operatore." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <link href="./style.css" rel="stylesheet" />
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- brand / title -->
+  <header class="panel brand">
+    <div class="wordmark">HGTFS<span class="dot">.</span></div>
+    <div class="sub">Historical GTFS — <em>viewer</em></div>
+    <div class="dataset">Rete ferroviaria italiana · 1839–1930</div>
+  </header>
+
+  <!-- legend -->
+  <aside class="panel legend" id="legend">
+    <div class="legend-title">Operatore</div>
+    <ul class="ops" id="ops"></ul>
+    <div class="legend-title">Incertezza</div>
+    <div class="uncert">
+      <span class="ramp"></span>
+      <div class="uncert-labels"><span>apertura<br>incerta</span><span>confermata</span></div>
+    </div>
+    <p class="note">Le stazioni sfumano lungo la loro finestra di apertura: i dati storici sono datati per intervalli, non per giorno.</p>
+  </aside>
+
+  <!-- timeline -->
+  <footer class="panel timeline">
+    <button id="play" class="play" aria-label="Play/pausa">▶</button>
+    <div class="year-block">
+      <div class="year" id="year">1876</div>
+      <div class="counts" id="counts">—</div>
+    </div>
+    <div class="track-wrap">
+      <input id="slider" class="slider" type="range" min="1839" max="1930" step="1" value="1876" />
+      <div class="ticks" id="ticks"></div>
+    </div>
+  </footer>
+
+  <div class="credit">dati: stazioni.xlsx · ViaggiaTreno · OpenStreetMap/Nominatim · Wikidata — base: © CARTO, © OpenStreetMap</div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/deck.gl@9.0.38/dist.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
