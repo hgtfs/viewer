@@ -49,6 +49,17 @@
 
   <div class="credit">dati: stazioni.xlsx · ViaggiaTreno · OpenStreetMap/Nominatim · Wikidata — base: © CARTO, © OpenStreetMap</div>
 
+  <!-- drag & drop loader: data is not bundled, drop the HGTFS files to load them -->
+  <div class="drop" id="drop">
+    <div class="drop-card">
+      <div class="drop-ic">⤓</div>
+      <div class="drop-h">Trascina qui i dati HGTFS</div>
+      <div class="drop-p">stops.geojson · edges.geojson · agencies.json</div>
+      <label class="browse-btn">sfoglia…<input id="browse" type="file" accept=".geojson,.json,application/json" multiple hidden /></label>
+      <ul class="drop-status" id="dropstatus"></ul>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/deck.gl@9.0.38/dist.min.js"></script>
   <script src="./app.js"></script>

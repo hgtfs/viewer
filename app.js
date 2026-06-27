@@ -135,20 +135,53 @@ map.on("load", () => {
   render();
 });
 
-Promise.all([
-  fetch("./data/stops.geojson").then(r => r.json()),
-  fetch("./data/edges.geojson").then(r => r.json()),
-  fetch("./data/agencies.json").then(r => r.json()),
-]).then(([s, e, agencies]) => {
-  stops = s.features; edges = e.features;
-  agencies.forEach((a) => { a._rgb = hexToRgb(a.color); agencyById[a.id] = a; });
-  buildLegend(agencies); buildTicks();
-  dataReady = true;
-  render();
-}).catch((err) => {
-  $("counts").textContent = "errore nel caricamento dati";
-  console.error(err);
+buildTicks();
+
+/* ---------- data loading: drag & drop (data is not bundled) ---------- */
+function ingest(name, json) {
+  if (Array.isArray(json) && json.length && (json[0].color || json[0].id)) {     // agencies.json
+    json.forEach((a) => { a._rgb = hexToRgb(a.color || "#888888"); agencyById[a.id] = a; });
+    buildLegend(json);
+    return;
+  }
+  if (json && json.type === "FeatureCollection" && json.features.length) {
+    const g = (json.features[0].geometry || {}).type;
+    if (g === "Point" || /stop/i.test(name)) { stops = json.features; return; }
+    if (g === "LineString" || /edge/i.test(name)) { edges = json.features; return; }
+  }
+}
+function updateDropStatus() {
+  const items = [["stops.geojson", stops.length], ["edges.geojson", edges.length],
+                 ["agencies.json", Object.keys(agencyById).length]];
+  $("dropstatus").innerHTML = items.map(([n, c]) =>
+    `<li class="${c ? "ok" : ""}">${c ? "✓" : "○"} ${n}${c ? ` · ${c}` : ""}</li>`).join("");
+}
+function tryReady() {
+  updateDropStatus();
+  if (stops.length && edges.length) {
+    dataReady = true;
+    document.body.classList.add("loaded");
+    render();
+  }
+}
+async function handleFiles(files) {
+  for (const f of files) {
+    try { ingest(f.name, JSON.parse(await f.text())); }
+    catch (err) { console.error("file non valido:", f.name, err); }
+  }
+  tryReady();
+}
+
+const drop = $("drop");
+["dragenter", "dragover"].forEach((ev) =>
+  document.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+document.addEventListener("dragleave", (e) => { if (e.relatedTarget === null) drop.classList.remove("over"); });
+document.addEventListener("drop", (e) => {
+  e.preventDefault(); drop.classList.remove("over");
+  if (e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
 });
+$("browse").addEventListener("change", (e) => handleFiles(e.target.files));
+updateDropStatus();
 
 $("slider").addEventListener("input", (e) => { year = +e.target.value; if (playing) setPlaying(false); render(); });
 $("play").addEventListener("click", () => setPlaying(!playing));

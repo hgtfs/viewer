@@ -16,27 +16,35 @@ the railway network open, close, and change operator. Built for `hgtfs.github.io
 ## Run / deploy
 
 Pure static — no build step, no backend, no API keys (basemap © CARTO/OSM, libraries
-from CDN). Drop the folder at `/viewer`:
+from CDN). Deploy the folder to `/viewer`; open it and **drag the data in** (see below).
 
 ```bash
 # locally
 python3 -m http.server 8099   # then open http://localhost:8099/
 ```
 
+## Loading data (drag & drop)
+
+Data is **not bundled** with the viewer. Open the page and drag
+`stops.geojson`, `edges.geojson`, and `agencies.json` onto it (or use *sfoglia…*).
+Files are detected by content (point/line FeatureCollections; the agencies array),
+so order and exact filenames don't matter. `stops` + `edges` are enough to render;
+`agencies.json` adds operator colours and the legend.
+
 ## Structure
 
 ```
 viewer/
-  index.html   markup + CDN libs (MapLibre GL, deck.gl) + fonts
+  index.html   markup + CDN libs (MapLibre GL, deck.gl) + fonts + drop zone
   style.css    dark glass UI
-  app.js       map, deck.gl layers, time scrubbing, legend, tooltips
-  data/        stops.geojson, edges.geojson, agencies.json
+  app.js       map, deck.gl layers, time scrubbing, drag&drop loader, legend, tooltips
 ```
 
-## Regenerate the data
+## Getting the data
 
-`data/*` is produced from the HGTFS feed by `../pipeline/build_webmap.py`
-(run it after the rest of the pipeline). It re-reads `hgtfs/` + `data/processed/`.
+Produce the three files with `../pipeline/build_webmap.py` (run after the rest of the
+pipeline; it reads `hgtfs/` + `data/processed/` and writes them to `viewer/data/`,
+which is git-ignored). Then drag them into the running viewer.
 
 ## Known limits
 
