@@ -25,11 +25,19 @@ python3 -m http.server 8099   # then open http://localhost:8099/
 
 ## Loading data (drag & drop)
 
-Data is **not bundled** with the viewer. Open the page and drag
-`stops.geojson`, `edges.geojson`, and `agencies.json` onto it (or use *sfoglia…*).
-Files are detected by content (point/line FeatureCollections; the agencies array),
-so order and exact filenames don't matter. `stops` + `edges` are enough to render;
-`agencies.json` adds operator colours and the legend.
+Data is **not bundled**. Open the page and drag in **a HGTFS `.zip`** — the viewer
+unzips it in-browser (fflate) and parses the feed:
+
+- `stops.txt` → stops (with `date_opened` + uncertainty columns)
+- `network_edges.txt` → the graph (joined to stop coordinates)
+- `routes.txt` / `agency.txt` → routes & operators
+- `route_operators.csv` (extension) → the time-varying edge colouring
+
+Loose files also work (drop the individual `.txt`/`.csv`, or the legacy
+`stops.geojson`/`edges.geojson`/`agencies.json`). Files are routed by basename and
+content, so order doesn't matter. `stops` + `edges` are enough to render; operator
+data adds colours and the legend. Operators not in `agency.txt` (e.g. the unresolved
+`UNKNOWN_RM_RA`) get a generated colour and a neutral legend entry.
 
 ## Structure
 
@@ -42,9 +50,10 @@ viewer/
 
 ## Getting the data
 
-Produce the three files with `../pipeline/build_webmap.py` (run after the rest of the
-pipeline; it reads `hgtfs/` + `data/processed/` and writes them to `viewer/data/`,
-which is git-ignored). Then drag them into the running viewer.
+Build the HGTFS `.zip` with `../pipeline/build_feed_zip.py` → `viewer/data/hgtfs_feed.zip`
+(bundles `agency/stops/routes/network_edges` + `route_operators.csv`). Then drag it in.
+`../pipeline/build_webmap.py` still emits the legacy GeoJSON if you prefer those.
+`viewer/data/` is git-ignored.
 
 ## Known limits
 

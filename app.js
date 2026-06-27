@@ -87,7 +87,8 @@ function render() {
 /* ---------- ui ---------- */
 function buildLegend(agencies) {
   const ul = $("ops");
-  agencies.filter(a => a.id !== "RA").forEach((a) => {       // RA shares SFMER's slot visually
+  ul.innerHTML = "";
+  agencies.forEach((a) => {
     const li = document.createElement("li");
     if (a.pseudo) li.className = "pseudo";
     const era = a.from ? `${a.from}–${a.to || ""}` : "";
@@ -137,37 +138,121 @@ map.on("load", () => {
 
 buildTicks();
 
-/* ---------- data loading: drag & drop (data is not bundled) ---------- */
-function ingest(name, json) {
-  if (Array.isArray(json) && json.length && (json[0].color || json[0].id)) {     // agencies.json
-    json.forEach((a) => { a._rgb = hexToRgb(a.color || "#888888"); agencyById[a.id] = a; });
-    buildLegend(json);
+/* ---------- data loading: drag & drop a HGTFS .zip (or loose files) ---------- */
+const PAL = {
+  FS: "#2ec4b6", RM: "#4e79a7", RA: "#e15759", RS: "#b07aa1", SFAI: "#59a14f",
+  SFR: "#edc948", SFMER: "#ff9da7", CRFS: "#9c6644", SFSS: "#c9a227",
+  UNKNOWN_RM_RA: "#6b7280", UNKNOWN_PRE1885: "#4b5563", SARD_OP: "#8d6e63",
+};
+const PSEUDO_NAME = {
+  UNKNOWN_RM_RA: "Rete Mediterranea / Adriatica (non distinte)",
+  UNKNOWN_PRE1885: "Operatore pre-1885 (non risolto)",
+  SARD_OP: "Operatore sardo (CRFS/SFSS)",
+};
+function hslHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const to = (x) => Math.round(255 * x).toString(16).padStart(2, "0");
+  return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
+}
+function colorOf(id) {
+  if (PAL[id]) return PAL[id];
+  let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return hslHex(h % 360, 42, 56);
+}
+function yr(s) { return s && /^\d{4}/.test(String(s)) ? parseInt(String(s).slice(0, 4)) : null; }
+
+function parseCSV(text) {
+  const rows = []; let f = "", row = [], q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ",") { row.push(f); f = ""; }
+    else if (c === "\n") { row.push(f); rows.push(row); row = []; f = ""; }
+    else if (c !== "\r") f += c;
+  }
+  if (f.length || row.length) { row.push(f); rows.push(row); }
+  if (!rows.length) return [];
+  const h = rows.shift().map((x) => x.trim());
+  return rows.filter((r) => r.some((v) => v !== "")).map((r) => {
+    const o = {}; h.forEach((k, j) => o[k] = (r[j] ?? "").trim()); return o;
+  });
+}
+
+const T = {};  // accumulated source tables, keyed by kind
+function stash(base, text) {
+  const b = base.toLowerCase();
+  if (/\.geojson$|\.json$/.test(b)) {
+    let j; try { j = JSON.parse(text); } catch { return; }
+    if (Array.isArray(j)) T.geoAgencies = j;
+    else if (j.type === "FeatureCollection" && j.features[0]) {
+      const g = (j.features[0].geometry || {}).type;
+      if (g === "Point") T.geoStops = j.features; else if (g === "LineString") T.geoEdges = j.features;
+    }
     return;
   }
-  if (json && json.type === "FeatureCollection" && json.features.length) {
-    const g = (json.features[0].geometry || {}).type;
-    if (g === "Point" || /stop/i.test(name)) { stops = json.features; return; }
-    if (g === "LineString" || /edge/i.test(name)) { edges = json.features; return; }
-  }
+  const rows = parseCSV(text);
+  if (/agency/.test(b)) T.agency = rows;
+  else if (/stop/.test(b)) T.stops = rows;
+  else if (/network_edge|edges?/.test(b)) T.edges = rows;
+  else if (/operator/.test(b)) T.routeops = rows;
+  else if (/route/.test(b)) T.routes = rows;
 }
+
+function assemble() {
+  let ags = [];
+  if (T.geoAgencies) ags = T.geoAgencies.map((a) => ({ ...a }));
+  else if (T.agency) ags = T.agency.map((a) => ({ id: a.agency_id, name: a.agency_name, from: yr(a.date_opened), to: yr(a.date_closed), pseudo: false }));
+
+  if (T.geoStops) stops = T.geoStops;
+  else if (T.stops) stops = T.stops.filter((s) => s.stop_lat && s.stop_lon).map((s) => ({
+    type: "Feature", geometry: { type: "Point", coordinates: [+s.stop_lon, +s.stop_lat] },
+    properties: { id: s.stop_id, name: s.stop_name, open: yr(s.date_opened), open_min: yr(s.date_opened_min), open_max: yr(s.date_opened_max), closed: yr(s.date_closed), precision: s.date_precision },
+  }));
+  else stops = [];
+
+  const coords = {}; stops.forEach((f) => coords[f.properties.id] = f.geometry.coordinates);
+  const spans = {};
+  if (T.routeops) T.routeops.forEach((r) => (spans[r.route_id] = spans[r.route_id] || []).push({ agency: r.agency_id, from: yr(r.valid_from), to: yr(r.valid_to) }));
+  const rAg = {}; if (T.routes) T.routes.forEach((r) => rAg[r.route_id] = { agency: r.agency_id, open: yr(r.date_opened), closed: yr(r.date_closed) });
+
+  if (T.geoEdges) edges = T.geoEdges;
+  else if (T.edges) edges = T.edges.map((e) => {
+    const a = coords[e.from_stop_id], b = coords[e.to_stop_id]; if (!a || !b) return null;
+    let ops = spans[e.route_id];
+    if (!ops) { const ra = rAg[e.route_id]; ops = ra && ra.agency ? [{ agency: ra.agency, from: ra.open, to: ra.closed }] : []; }
+    return { type: "Feature", geometry: { type: "LineString", coordinates: [a, b] },
+      properties: { route_id: e.route_id, line: e.line_name, open: yr(e.date_opened), closed: yr(e.date_closed), operators: ops } };
+  }).filter(Boolean);
+  else edges = [];
+
+  const have = new Set(ags.map((a) => a.id));
+  Object.values(spans).flat().forEach((o) => {
+    if (o.agency && !have.has(o.agency)) { have.add(o.agency); ags.push({ id: o.agency, name: PSEUDO_NAME[o.agency] || o.agency, from: null, to: null, pseudo: /^UNKNOWN|^SARD_OP/.test(o.agency) }); }
+  });
+  agencyById = {};
+  ags.forEach((a) => { a.color = a.color || colorOf(a.id); a._rgb = hexToRgb(a.color); agencyById[a.id] = a; });
+  if (ags.length) buildLegend(ags);
+}
+
 function updateDropStatus() {
-  const items = [["stops.geojson", stops.length], ["edges.geojson", edges.length],
-                 ["agencies.json", Object.keys(agencyById).length]];
-  $("dropstatus").innerHTML = items.map(([n, c]) =>
-    `<li class="${c ? "ok" : ""}">${c ? "✓" : "○"} ${n}${c ? ` · ${c}` : ""}</li>`).join("");
+  const items = [["stazioni", stops.length], ["tratte", edges.length], ["operatori", Object.keys(agencyById).length]];
+  $("dropstatus").innerHTML = items.map(([n, c]) => `<li class="${c ? "ok" : ""}">${c ? "✓" : "○"} ${n}${c ? ` · ${c}` : ""}</li>`).join("");
 }
 function tryReady() {
-  updateDropStatus();
-  if (stops.length && edges.length) {
-    dataReady = true;
-    document.body.classList.add("loaded");
-    render();
-  }
+  assemble(); updateDropStatus();
+  if (stops.length && edges.length) { dataReady = true; document.body.classList.add("loaded"); render(); }
 }
 async function handleFiles(files) {
   for (const f of files) {
-    try { ingest(f.name, JSON.parse(await f.text())); }
-    catch (err) { console.error("file non valido:", f.name, err); }
+    try {
+      if (/\.zip$/i.test(f.name)) {
+        const entries = fflate.unzipSync(new Uint8Array(await f.arrayBuffer()));
+        for (const path in entries) { const base = path.split("/").pop(); if (base) stash(base, fflate.strFromU8(entries[path])); }
+      } else stash(f.name, await f.text());
+    } catch (err) { console.error("file non leggibile:", f.name, err); }
   }
   tryReady();
 }
