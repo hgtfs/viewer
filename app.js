@@ -182,6 +182,25 @@ function parseCSV(text) {
 }
 
 const T = {};  // accumulated source tables, keyed by kind
+let loadErr = "";
+/* route a CSV by its COLUMNS first (robust against junk like macOS ._ files,
+   which lack these headers), filename only as a fallback */
+function classify(base, rows) {
+  if (!rows.length) return null;
+  const cols = new Set(Object.keys(rows[0]));
+  const has = (...k) => k.every((x) => cols.has(x));
+  if (has("agency_id", "agency_name")) return "agency";
+  if (cols.has("stop_id") && (cols.has("stop_lat") || cols.has("stop_lon"))) return "stops";
+  if (has("from_stop_id", "to_stop_id")) return "edges";
+  if (cols.has("valid_from") || cols.has("valid_to")) return "routeops";
+  if (cols.has("route_id") && (cols.has("route_type") || cols.has("route_long_name") || cols.has("agency_id"))) return "routes";
+  if (/agency/.test(base)) return "agency";
+  if (/stop/.test(base)) return "stops";
+  if (/edge/.test(base)) return "edges";
+  if (/operator/.test(base)) return "routeops";
+  if (/route/.test(base)) return "routes";
+  return null;
+}
 function stash(base, text) {
   const b = base.toLowerCase();
   if (/\.geojson$|\.json$/.test(b)) {
@@ -194,11 +213,8 @@ function stash(base, text) {
     return;
   }
   const rows = parseCSV(text);
-  if (/agency/.test(b)) T.agency = rows;
-  else if (/stop/.test(b)) T.stops = rows;
-  else if (/network_edge|edges?/.test(b)) T.edges = rows;
-  else if (/operator/.test(b)) T.routeops = rows;
-  else if (/route/.test(b)) T.routes = rows;
+  const kind = classify(b, rows);
+  if (kind) T[kind] = rows;
 }
 
 function assemble() {
@@ -239,20 +255,35 @@ function assemble() {
 
 function updateDropStatus() {
   const items = [["stazioni", stops.length], ["tratte", edges.length], ["operatori", Object.keys(agencyById).length]];
-  $("dropstatus").innerHTML = items.map(([n, c]) => `<li class="${c ? "ok" : ""}">${c ? "✓" : "○"} ${n}${c ? ` · ${c}` : ""}</li>`).join("");
+  let html = items.map(([n, c]) => `<li class="${c ? "ok" : ""}">${c ? "✓" : "○"} ${n}${c ? ` · ${c}` : ""}</li>`).join("");
+  if (loadErr) html += `<li class="err">⚠ ${loadErr}</li>`;
+  else if (Object.keys(T).length && (!stops.length || !edges.length))
+    html += `<li class="err">⚠ feed incompleto — servono stops e network_edges</li>`;
+  $("dropstatus").innerHTML = html;
 }
 function tryReady() {
   assemble(); updateDropStatus();
   if (stops.length && edges.length) { dataReady = true; document.body.classList.add("loaded"); render(); }
 }
+function skip(path) {       // directories, macOS metadata, dotfiles / AppleDouble
+  if (path.endsWith("/") || /(^|\/)__MACOSX\//.test(path)) return true;
+  const base = path.split("/").pop();
+  return !base || base.startsWith(".");
+}
 async function handleFiles(files) {
+  loadErr = "";
   for (const f of files) {
     try {
       if (/\.zip$/i.test(f.name)) {
         const entries = fflate.unzipSync(new Uint8Array(await f.arrayBuffer()));
-        for (const path in entries) { const base = path.split("/").pop(); if (base) stash(base, fflate.strFromU8(entries[path])); }
-      } else stash(f.name, await f.text());
-    } catch (err) { console.error("file non leggibile:", f.name, err); }
+        for (const path in entries) {
+          if (skip(path)) continue;
+          stash(path.split("/").pop(), fflate.strFromU8(entries[path]));
+        }
+      } else if (!skip(f.name)) {
+        stash(f.name.split("/").pop(), await f.text());
+      }
+    } catch (err) { loadErr = `${f.name}: ${err && err.message || err}`; console.error(err); }
   }
   tryReady();
 }

@@ -157,6 +157,7 @@ body.loaded .drop { display: none; }
   max-width: 220px; margin-inline: auto;
 }
 .drop-status li.ok { color: var(--accent-2); }
+.drop-status li.err { color: #e15759; }
 
 /* deck tooltip */
 .deck-tooltip {
