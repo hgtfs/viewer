@@ -35,7 +35,25 @@ unzips it in-browser (fflate) and parses the feed:
 - `events.txt` (optional extension) → historical context: it **frames the timeline**
   (its min/max date become the scrubber's start/end) and annotates it (a marker per
   event + a live caption naming the moment you're scrubbing through). Columns:
-  `event_id, date, end_date, name, description` (`end_date` optional, for periods).
+  `event_id, date, end_date, name, description, period_uri` (`end_date` optional, for
+  periods; `period_uri` optional — a [PeriodO](https://perio.do) reference, shown as a
+  link on the caption so a moment resolves to a scholarly period definition).
+
+## Launching from a GitHub repo (jsDelivr)
+
+The viewer can load a feed straight from any GitHub repo — no upload needed:
+
+```
+https://hgtfs.github.io/viewer/?repo=<org>/<repo>        # default branch (main/master)
+https://hgtfs.github.io/viewer/?repo=<org>/<repo>@<ref>  # a branch, tag or commit
+https://hgtfs.github.io/viewer/<org>/<repo>/             # path form (via 404.html)
+https://hgtfs.github.io/viewer/#<org>/<repo>             # hash form
+```
+
+The repo's file tree is read from the **jsDelivr data API**
+(`data.jsdelivr.com/v1/packages/gh/...?structure=flat`), the HGTFS files are picked by
+name from anywhere in the tree, and fetched from the **jsDelivr CDN**. Any repo that
+contains a HGTFS feed (loose files or in a subfolder) works.
 
 Loose files also work (drop the individual `.txt`/`.csv`, or the legacy
 `stops.geojson`/`edges.geojson`/`agencies.json`). Files are routed by basename and

@@ -83,7 +83,9 @@ function render() {
   $("slider").value = year;
   $("slider").style.setProperty("--pct", `${((year - MIN) / (MAX - MIN)) * 100}%`);
   const ev = eventAt(year);
-  $("era").textContent = ev ? ev.name : "";
+  $("era").innerHTML = ev
+    ? (ev.uri ? `<a href="${ev.uri}" target="_blank" rel="noopener">${ev.name} ↗</a>` : ev.name)
+    : "";
 }
 
 /* ---------- ui ---------- */
@@ -283,7 +285,7 @@ function assemble() {
 
   // optional historical context: events frame the timeline and annotate it
   events = T.events
-    ? T.events.map((e) => ({ date: yr(e.date || e.year), end: yr(e.end_date), name: e.name || e.event_id || "", desc: e.description || "" }))
+    ? T.events.map((e) => ({ date: yr(e.date || e.year), end: yr(e.end_date), name: e.name || e.event_id || "", desc: e.description || "", uri: e.period_uri || e.periodo || "" }))
         .filter((e) => e.date).sort((a, b) => a.date - b.date)
     : [];
   applyBounds();
@@ -338,3 +340,43 @@ updateDropStatus();
 
 $("slider").addEventListener("input", (e) => { year = +e.target.value; if (playing) setPlaying(false); render(); });
 $("play").addEventListener("click", () => setPlaying(!playing));
+
+/* ---------- optional: launch a feed straight from a GitHub repo via jsDelivr ----------
+   URL forms:  ?repo=org/repo[@ref]   |   #org/repo[@ref]   |   /org/repo/ (via 404.html)
+   The repo's file structure is read from the jsDelivr data API, the HGTFS files are
+   picked by name, and fetched from the jsDelivr CDN. */
+const FEED_RE = /(?:^|\/)(agency|stops|routes|network_edges|events|route_operators|agencies)\.(txt|csv|json)$|\.geojson$/i;
+function setMsg(t) { $("dropstatus").innerHTML = `<li>${t}</li>`; }
+
+async function loadFromGh(spec) {
+  const at = spec.indexOf("@");
+  const repoPath = (at >= 0 ? spec.slice(0, at) : spec).replace(/\/+$/, "");
+  const ref0 = at >= 0 ? spec.slice(at + 1) : null;
+  const [org, repo] = repoPath.split("/");
+  if (!org || !repo) return;
+  for (const ref of (ref0 ? [ref0] : ["main", "master"])) {
+    try {
+      setMsg(`lettura struttura ${org}/${repo}@${ref}…`);
+      const meta = await fetch(`https://data.jsdelivr.com/v1/packages/gh/${org}/${repo}@${ref}?structure=flat`).then((r) => r.ok ? r.json() : null);
+      const wanted = (meta && meta.files || []).map((f) => f.name).filter((n) => FEED_RE.test(n));
+      if (!wanted.length) continue;
+      setMsg(`caricamento ${org}/${repo}@${ref} (${wanted.length} file)…`);
+      loadErr = "";
+      for (const n of wanted) {
+        try { stash(n.split("/").pop(), await fetch(`https://cdn.jsdelivr.net/gh/${org}/${repo}@${ref}${n}`).then((r) => r.text())); }
+        catch (e) { console.error(e); }
+      }
+      tryReady();
+      if (stops.length && edges.length) return;
+    } catch (e) { console.error(e); }
+  }
+  loadErr = `nessun feed HGTFS in ${org}/${repo}`; updateDropStatus();
+}
+function targetFromUrl() {
+  const q = new URLSearchParams(location.search).get("repo") || new URLSearchParams(location.search).get("gh");
+  const s = q || (location.hash.length > 1 ? decodeURIComponent(location.hash.replace(/^#\/?/, "")) : "");
+  return /[^/]+\/[^/]+/.test(s) ? s : null;
+}
+
+const ghTarget = targetFromUrl();
+if (ghTarget) loadFromGh(ghTarget);

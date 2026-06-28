@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<meta charset="utf-8" />
+<title>HGTFS Viewer</title>
+<!-- GitHub Pages SPA fallback: turn /<base>/<org>/<repo>/ into /<base>/?repo=<org>/<repo>
+     so the viewer can be launched by path as well as by ?repo= query. -->
+<script>
+  (function () {
+    var segs = location.pathname.split("/").filter(Boolean);
+    if (segs.length >= 2) {
+      var repo = segs.slice(-2).join("/");
+      var base = "/" + segs.slice(0, -2).join("/");
+      if (base !== "/") base += "/";
+      location.replace(base + "?repo=" + encodeURIComponent(repo) + location.hash);
+    } else {
+      location.replace("/");
+    }
+  })();
+</script>
