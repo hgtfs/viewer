@@ -3,14 +3,14 @@
    deck.gl, scrubs by year. Stations fade in across their uncertainty window;
    edges are coloured by the operator valid in the selected year. */
 
-const MIN = 1839, MAX = 1930;
+let MIN = 1839, MAX = 1930;   // contextual window; overridden by events.txt if present
 const BASEMAP = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
-const TICKS = [
+const TICKS = [   // fallback timeline marks when no events.txt is loaded
   { y: 1839 }, { y: 1885, l: "Convenzioni" }, { y: 1905, l: "FS" }, { y: 1930 },
 ];
 
 let year = 1876, playing = false, timer = null;
-let stops = [], edges = [], agencyById = {}, overlay = null, mapReady = false, dataReady = false;
+let stops = [], edges = [], events = [], agencyById = {}, overlay = null, mapReady = false, dataReady = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -82,6 +82,8 @@ function render() {
   $("year").textContent = year;
   $("slider").value = year;
   $("slider").style.setProperty("--pct", `${((year - MIN) / (MAX - MIN)) * 100}%`);
+  const ev = eventAt(year);
+  $("era").textContent = ev ? ev.name : "";
 }
 
 /* ---------- ui ---------- */
@@ -98,13 +100,38 @@ function buildLegend(agencies) {
 }
 function buildTicks() {
   const box = $("ticks");
-  TICKS.forEach((t) => {
+  box.innerHTML = "";
+  const marks = events.length
+    ? events.map((e) => ({ y: e.date, l: String(e.date), title: e.name }))
+    : TICKS.map((t) => ({ y: t.y, l: (t.l ? t.l + " " : "") + t.y, title: t.l || "" }));
+  marks.forEach((m) => {
+    if (m.y < MIN || m.y > MAX) return;
     const el = document.createElement("div");
     el.className = "tick";
-    el.style.left = `${((t.y - MIN) / (MAX - MIN)) * 100}%`;
-    el.innerHTML = `<div class="bar"></div><div class="lab">${t.l ? t.l + " " : ""}${t.y}</div>`;
+    el.style.left = `${((m.y - MIN) / (MAX - MIN)) * 100}%`;
+    el.title = m.title || "";
+    el.innerHTML = `<div class="bar"></div><div class="lab">${m.l}</div>`;
     box.appendChild(el);
   });
+}
+/* the event providing context at a given year: a spanning event wins, else the
+   most recent past milestone */
+function eventAt(y) {
+  let span = null, last = null;
+  for (const e of events) {
+    if (e.end && e.date <= y && y <= e.end) span = e;
+    if (e.date <= y) last = e;
+  }
+  return span || last;
+}
+/* events.txt frames the contextual start/end of the timeline */
+function applyBounds() {
+  if (events.length) {
+    MIN = Math.min(...events.map((e) => e.date));
+    MAX = Math.max(...events.map((e) => e.end || e.date));
+  } else { MIN = 1839; MAX = 1930; }
+  const sl = $("slider"); sl.min = MIN; sl.max = MAX;
+  year = Math.max(MIN, Math.min(MAX, year));
 }
 function setPlaying(on) {
   playing = on;
@@ -193,8 +220,10 @@ function classify(base, rows) {
   if (cols.has("stop_id") && (cols.has("stop_lat") || cols.has("stop_lon"))) return "stops";
   if (has("from_stop_id", "to_stop_id")) return "edges";
   if (cols.has("valid_from") || cols.has("valid_to")) return "routeops";
+  if (cols.has("name") && (cols.has("date") || cols.has("year")) && !cols.has("route_id") && !cols.has("stop_id")) return "events";
   if (cols.has("route_id") && (cols.has("route_type") || cols.has("route_long_name") || cols.has("agency_id"))) return "routes";
   if (/agency/.test(base)) return "agency";
+  if (/event/.test(base)) return "events";
   if (/stop/.test(base)) return "stops";
   if (/edge/.test(base)) return "edges";
   if (/operator/.test(base)) return "routeops";
@@ -251,6 +280,14 @@ function assemble() {
   agencyById = {};
   ags.forEach((a) => { a.color = a.color || colorOf(a.id); a._rgb = hexToRgb(a.color); agencyById[a.id] = a; });
   if (ags.length) buildLegend(ags);
+
+  // optional historical context: events frame the timeline and annotate it
+  events = T.events
+    ? T.events.map((e) => ({ date: yr(e.date || e.year), end: yr(e.end_date), name: e.name || e.event_id || "", desc: e.description || "" }))
+        .filter((e) => e.date).sort((a, b) => a.date - b.date)
+    : [];
+  applyBounds();
+  buildTicks();
 }
 
 function updateDropStatus() {

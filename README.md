@@ -32,6 +32,10 @@ unzips it in-browser (fflate) and parses the feed:
 - `network_edges.txt` → the graph (joined to stop coordinates)
 - `routes.txt` / `agency.txt` → routes & operators
 - `route_operators.csv` (extension) → the time-varying edge colouring
+- `events.txt` (optional extension) → historical context: it **frames the timeline**
+  (its min/max date become the scrubber's start/end) and annotates it (a marker per
+  event + a live caption naming the moment you're scrubbing through). Columns:
+  `event_id, date, end_date, name, description` (`end_date` optional, for periods).
 
 Loose files also work (drop the individual `.txt`/`.csv`, or the legacy
 `stops.geojson`/`edges.geojson`/`agencies.json`). Files are routed by basename and
