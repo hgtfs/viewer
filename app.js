@@ -11,6 +11,7 @@ const TICKS = [   // fallback timeline marks when no events.txt is loaded
 
 let year = 1876, playing = false, timer = null;
 let stops = [], edges = [], events = [], agencyById = {}, overlay = null, mapReady = false, dataReady = false;
+let currentRepo = null;   // repo spec kept in the shareable hash, when loaded from GitHub
 
 const $ = (id) => document.getElementById(id);
 
@@ -151,6 +152,7 @@ function render() {
   $("era").innerHTML = ev
     ? (ev.uri ? `<a href="${ev.uri}" target="_blank" rel="noopener">${ev.name} ↗</a>` : ev.name)
     : "";
+  writeHash();
 }
 
 /* ---------- ui ---------- */
@@ -218,12 +220,20 @@ function setPlaying(on) {
 }
 
 /* ---------- boot ---------- */
+/* shareable state lives in the hash: #repo=org/repo&y=1861&map=zoom/lat/lng
+   (legacy #org/repo still works). Restore it before creating the map. */
+const HS = parseHash();
+if (HS.y != null) year = HS.y;
 const map = new maplibregl.Map({
-  container: "map", style: BASEMAP, center: [12.4, 42.3], zoom: 5.1,
+  container: "map", style: BASEMAP,
+  center: HS.map ? [HS.map.lng, HS.map.lat] : [12.4, 42.3],
+  zoom: HS.map ? HS.map.z : 5.1,
   attributionControl: false, maxZoom: 12, minZoom: 2,
 });
-/* the viewer is dataset-agnostic — frame whatever feed gets loaded, once */
-let fitted = false;
+map.on("moveend", writeHash);
+/* the viewer is dataset-agnostic — frame whatever feed gets loaded, once.
+   A shared map view (in the hash) takes precedence over auto-fit. */
+let fitted = !!HS.map;
 function fitToData() {
   if (fitted || !mapReady || !stops.length) return;
   let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
@@ -494,11 +504,46 @@ async function loadFromGh(spec) {
   }
   loadErr = t("ghNone", { repo: `${org}/${repo}` }); updateDropStatus();
 }
+/* ---------- shareable URL state (hash): repo + map view (xyz) + year ----------
+   #repo=org/repo[@ref]&y=1861&map=<zoom>/<lat>/<lng>
+   The legacy bare form (#org/repo) is still accepted for loading a feed. */
+function parseHash() {
+  let h = location.hash.replace(/^#\/?/, "");
+  if (!h) return {};
+  try { h = decodeURIComponent(h); } catch (e) { /* keep raw */ }
+  const out = {};
+  if (h.includes("=")) {
+    for (const kv of h.split("&")) {
+      const i = kv.indexOf("="); if (i < 0) continue;
+      const k = kv.slice(0, i), v = kv.slice(i + 1);
+      if (k === "repo") out.repo = v;
+      else if (k === "y") { const n = parseInt(v, 10); if (!isNaN(n)) out.y = n; }
+      else if (k === "map") {
+        const m = v.split("/").map(Number);
+        if (m.length === 3 && m.every(isFinite)) out.map = { z: m[0], lat: m[1], lng: m[2] };
+      }
+    }
+  } else if (/[^/]+\/[^/]+/.test(h)) out.repo = h;   // legacy #org/repo[@ref]
+  return out;
+}
+let _hashT = null;
+function writeHash() {
+  if (!mapReady) return;
+  clearTimeout(_hashT);
+  _hashT = setTimeout(() => {
+    const c = map.getCenter(), parts = [];
+    if (currentRepo) parts.push("repo=" + currentRepo);
+    parts.push("y=" + year);
+    parts.push(`map=${map.getZoom().toFixed(2)}/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}`);
+    history.replaceState(null, "", "#" + parts.join("&"));
+  }, 250);
+}
 function targetFromUrl() {
   const q = new URLSearchParams(location.search).get("repo") || new URLSearchParams(location.search).get("gh");
-  const s = q || (location.hash.length > 1 ? decodeURIComponent(location.hash.replace(/^#\/?/, "")) : "");
+  const s = q || HS.repo || "";
   return /[^/]+\/[^/]+/.test(s) ? s : null;
 }
 
 const ghTarget = targetFromUrl();
+currentRepo = ghTarget || null;
 if (ghTarget) loadFromGh(ghTarget);
