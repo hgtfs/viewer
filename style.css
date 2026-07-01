@@ -59,11 +59,12 @@ body {
 }
 .legend-title:not(:first-child) { margin-top: 14px; }
 /* layer toggles */
+.layers { margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--glass-brd); }
 .lg-toggle {
   display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
-  font-size: 12.5px; color: var(--ink); margin: 0 0 12px;
-  padding-bottom: 12px; border-bottom: 1px solid var(--glass-brd);
+  font-size: 12.5px; color: var(--ink); margin: 0 0 7px;
 }
+.lg-toggle:last-child { margin-bottom: 0; }
 .lg-toggle input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; flex: none; }
 .lg-toggle.off { color: var(--faint); }
 /* operator list: scrolls when a feed has many operators (e.g. the US, ~1000) */

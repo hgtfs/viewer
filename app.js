@@ -13,6 +13,7 @@ let year = 1876, playing = false, timer = null;
 let stops = [], edges = [], events = [], agencyById = {}, overlay = null, mapReady = false, dataReady = false;
 let currentRepo = null;   // repo spec kept in the shareable hash, when loaded from GitHub
 let showStops = true;     // stations layer visibility (toggle in the legend)
+const showMode = { land: true, water: true };   // transport-mode visibility toggles
 
 const $ = (id) => document.getElementById(id);
 
@@ -34,7 +35,7 @@ const STR = {
     credit: "dati: feed HGTFS caricato · mappa base: © CARTO, © OpenStreetMap",
     dataLabel: "dati", basemap: "mappa base",
     stations: "stazioni", segments: "tratte", operators: "operatori",
-    stopsToggle: "Stazioni",
+    stopsToggle: "Stazioni", modeLand: "Treni", modeWater: "Marittimo",
     opened: "apertura", closed: "chiusura",
     incomplete: "feed incompleto — servono stops e network_edges",
     ghReading: "lettura struttura {repo}…",
@@ -55,7 +56,7 @@ const STR = {
     credit: "data: loaded HGTFS feed · base map: © CARTO, © OpenStreetMap",
     dataLabel: "data", basemap: "base map",
     stations: "stations", segments: "segments", operators: "operators",
-    stopsToggle: "Stations",
+    stopsToggle: "Stations", modeLand: "Trains", modeWater: "Maritime",
     opened: "opened", closed: "closed",
     incomplete: "incomplete feed — needs stops and network_edges",
     ghReading: "reading structure of {repo}…",
@@ -95,6 +96,12 @@ function colorFor(id) {
 function agencyName(id) {
   return (agencyById[id] && agencyById[id].name) || id || "—";
 }
+/* transport mode from GTFS route_type: water for ferry / water-transport codes
+   (4, 1000–1399), land otherwise (rail 2, HGTFS land 14xx, …). */
+function modeOf(routeType) {
+  const rt = parseInt(routeType, 10);
+  return (rt === 4 || (rt >= 1000 && rt <= 1399)) ? "water" : "land";
+}
 function operatorAtYear(ops, y) {
   if (!ops) return null;
   for (const o of ops) if ((o.from == null || o.from <= y) && (o.to == null || y < o.to)) return o.agency;
@@ -125,18 +132,27 @@ function makeLayers() {
   const edgeLayer = new deck.PathLayer({
     id: "edges", data: edges,
     getPath: (f) => f.geometry.coordinates,
-    getColor: (f) => { const a = edgeAlpha(f.properties, year); return a <= 0 ? [0, 0, 0, 0] : [...colorFor(operatorAtYear(f.properties.operators, year)), Math.round(a * 235)]; },
+    getColor: (f) => {
+      if (!showMode[f.properties.mode]) return [0, 0, 0, 0];
+      const a = edgeAlpha(f.properties, year);
+      return a <= 0 ? [0, 0, 0, 0] : [...colorFor(operatorAtYear(f.properties.operators, year)), Math.round(a * 235)];
+    },
     getWidth: 2.2, widthUnits: "pixels", widthMinPixels: 1.2,
     capRounded: true, jointRounded: true, pickable: true,
-    updateTriggers: { getColor: year },
+    updateTriggers: { getColor: [year, showMode.land, showMode.water] },
   });
   const stopLayer = new deck.ScatterplotLayer({
     id: "stops", data: stops, visible: showStops,
     getPosition: (f) => f.geometry.coordinates,
-    getFillColor: (f) => { const a = stopAlpha(f.properties, year); return a <= 0 ? [0, 0, 0, 0] : [245, 225, 196, Math.round(a * 230)]; },
+    getFillColor: (f) => {
+      const m = f.properties.modes;
+      if (m && !((m.land && showMode.land) || (m.water && showMode.water))) return [0, 0, 0, 0];
+      const a = stopAlpha(f.properties, year);
+      return a <= 0 ? [0, 0, 0, 0] : [245, 225, 196, Math.round(a * 230)];
+    },
     getRadius: 2.6, radiusUnits: "pixels", radiusMinPixels: 1.6, radiusMaxPixels: 5,
     stroked: false, pickable: true,
-    updateTriggers: { getFillColor: year },
+    updateTriggers: { getFillColor: [year, showMode.land, showMode.water] },
   });
   return [edgeLayer, stopLayer];
 }
@@ -168,6 +184,26 @@ function buildLegend(agencies) {
     const era = a.from ? `${a.from}–${a.to || ""}` : "";
     li.innerHTML = `<span class="sw" style="background:${a.color};color:${a.color}"></span>${a.name.split("(")[0].trim()}<span class="era">${era}</span>`;
     ul.appendChild(li);
+  });
+}
+/* mode toggles (Trains / Maritime) — only shown when a feed mixes modes */
+function buildModeToggles(present) {
+  const box = $("mode-toggles");
+  if (!box) return;
+  box.innerHTML = "";
+  if (present.size < 2) return;   // single-mode feed: nothing to toggle
+  [["land", "modeLand"], ["water", "modeWater"]].forEach(([m, key]) => {
+    if (!present.has(m)) return;
+    showMode[m] = true;
+    const row = document.createElement("label");
+    row.className = "lg-toggle";
+    row.innerHTML = `<input type="checkbox" id="toggle-${m}" checked /><span>${t(key)}</span>`;
+    row.querySelector("input").addEventListener("change", (e) => {
+      showMode[m] = e.target.checked;
+      row.classList.toggle("off", !showMode[m]);
+      render();
+    });
+    box.appendChild(row);
   });
 }
 function buildTicks() {
@@ -370,17 +406,24 @@ function assemble() {
   const coords = {}; stops.forEach((f) => coords[f.properties.id] = f.geometry.coordinates);
   const spans = {};
   if (T.routeops) T.routeops.forEach((r) => (spans[r.route_id] = spans[r.route_id] || []).push({ agency: r.agency_id, from: yr(r.valid_from), to: yr(r.valid_to) }));
-  const rAg = {}; if (T.routes) T.routes.forEach((r) => rAg[r.route_id] = { agency: r.agency_id, open: yr(r.date_opened), closed: yr(r.date_closed) });
+  const rAg = {}; if (T.routes) T.routes.forEach((r) => rAg[r.route_id] = { agency: r.agency_id, open: yr(r.date_opened), closed: yr(r.date_closed), type: r.route_type });
 
-  if (T.geoEdges) edges = T.geoEdges;
+  const stopMode = {};   // stop_id -> {land?,water?} : which modes touch each stop
+  if (T.geoEdges) { edges = T.geoEdges; edges.forEach((f) => { f.properties.mode = f.properties.mode || "land"; }); }
   else if (T.edges) edges = T.edges.map((e) => {
     const a = coords[e.from_stop_id], b = coords[e.to_stop_id]; if (!a || !b) return null;
+    const ra = rAg[e.route_id];
     let ops = spans[e.route_id];
-    if (!ops) { const ra = rAg[e.route_id]; ops = ra && ra.agency ? [{ agency: ra.agency, from: ra.open, to: ra.closed }] : []; }
+    if (!ops) ops = ra && ra.agency ? [{ agency: ra.agency, from: ra.open, to: ra.closed }] : [];
+    const mode = ra ? modeOf(ra.type) : "land";
+    (stopMode[e.from_stop_id] = stopMode[e.from_stop_id] || {})[mode] = true;
+    (stopMode[e.to_stop_id] = stopMode[e.to_stop_id] || {})[mode] = true;
     return { type: "Feature", geometry: { type: "LineString", coordinates: [a, b] },
-      properties: { route_id: e.route_id, line: e.line_name, open: yr(e.date_opened), closed: yr(e.date_closed), operators: ops } };
+      properties: { route_id: e.route_id, line: e.line_name, open: yr(e.date_opened), closed: yr(e.date_closed), operators: ops, mode } };
   }).filter(Boolean);
   else edges = [];
+  stops.forEach((f) => { f.properties.modes = stopMode[f.properties.id] || null; });
+  buildModeToggles(new Set(edges.map((e) => e.properties.mode)));
 
   const have = new Set(ags.map((a) => a.id));
   Object.values(spans).flat().forEach((o) => {
