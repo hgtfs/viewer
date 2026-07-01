@@ -81,6 +81,22 @@ body {
 .ops li.pseudo { color: var(--muted); }
 .ops li.pseudo .sw { background-image: repeating-linear-gradient(90deg, currentColor 0 3px, transparent 3px 6px) !important; }
 .ops .era { color: var(--faint); font-size: 11px; margin-left: auto; }
+/* operator filtering: checkbox + click-to-solo, search, reset */
+.op-head { display: flex; align-items: baseline; justify-content: space-between; }
+.ops-reset {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--accent); font-size: 10px; letter-spacing: 0.3px; text-transform: none;
+}
+.ops-search {
+  width: 100%; margin: 0 0 8px; padding: 5px 8px; box-sizing: border-box;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--glass-brd);
+  border-radius: 7px; color: var(--ink); font: inherit; font-size: 11.5px; outline: none;
+}
+.ops-search::placeholder { color: var(--faint); }
+.ops .op-cb { flex: none; width: 12px; height: 12px; margin: 0; cursor: pointer; accent-color: var(--accent); }
+.ops .op-name { cursor: pointer; }
+.ops .op-name:hover { color: var(--accent); }
+.ops li.op-off { opacity: 0.38; }
 
 .uncert { display: flex; align-items: center; gap: 10px; }
 .uncert .ramp {

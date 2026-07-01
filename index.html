@@ -28,7 +28,8 @@
       <label class="lg-toggle" id="stops-toggle"><input type="checkbox" id="toggle-stops" checked /><span data-i18n="stopsToggle">Stazioni</span></label>
       <div id="mode-toggles"></div>
     </div>
-    <div class="legend-title" data-i18n="op">Operatore</div>
+    <div class="legend-title op-head"><span data-i18n="op">Operatore</span><button id="ops-reset" class="ops-reset" hidden data-i18n="opsAll">tutti</button></div>
+    <input id="ops-search" class="ops-search" type="text" data-i18n-ph="opsSearch" placeholder="filtra operatori…" />
     <ul class="ops" id="ops"></ul>
     <div class="legend-title" data-i18n="uncert">Incertezza</div>
     <div class="uncert">

@@ -14,6 +14,11 @@ let stops = [], edges = [], events = [], agencyById = {}, overlay = null, mapRea
 let currentRepo = null;   // repo spec kept in the shareable hash, when loaded from GitHub
 let showStops = true;     // stations layer visibility (toggle in the legend)
 const showMode = { land: true, water: true };   // transport-mode visibility toggles
+let visibleOps = null;    // null = all operators shown; else a Set of visible agency ids
+let opVer = 0;            // bumped on every operator-filter change (deck updateTrigger)
+let allOpIds = [];
+const opRows = {};        // agency id -> { li, cb } legend rows
+function opShown(id) { return visibleOps === null || (id != null && visibleOps.has(id)); }
 
 const $ = (id) => document.getElementById(id);
 
@@ -36,6 +41,7 @@ const STR = {
     dataLabel: "dati", basemap: "mappa base",
     stations: "stazioni", segments: "tratte", operators: "operatori",
     stopsToggle: "Stazioni", modeLand: "Treni", modeWater: "Marittimo",
+    opsAll: "tutti", opsSearch: "filtra operatori…",
     opened: "apertura", closed: "chiusura",
     incomplete: "feed incompleto — servono stops e network_edges",
     ghReading: "lettura struttura {repo}…",
@@ -57,6 +63,7 @@ const STR = {
     dataLabel: "data", basemap: "base map",
     stations: "stations", segments: "segments", operators: "operators",
     stopsToggle: "Stations", modeLand: "Trains", modeWater: "Maritime",
+    opsAll: "all", opsSearch: "filter operators…",
     opened: "opened", closed: "closed",
     incomplete: "incomplete feed — needs stops and network_edges",
     ghReading: "reading structure of {repo}…",
@@ -81,6 +88,7 @@ function applyStaticI18n() {
   if (md) md.setAttribute("content", t("desc"));
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.setAttribute("placeholder", t(el.dataset.i18nPh)); });
   setDatasetLabel();
 }
 
@@ -134,12 +142,14 @@ function makeLayers() {
     getPath: (f) => f.geometry.coordinates,
     getColor: (f) => {
       if (!showMode[f.properties.mode]) return [0, 0, 0, 0];
+      const op = operatorAtYear(f.properties.operators, year);
+      if (!opShown(op)) return [0, 0, 0, 0];
       const a = edgeAlpha(f.properties, year);
-      return a <= 0 ? [0, 0, 0, 0] : [...colorFor(operatorAtYear(f.properties.operators, year)), Math.round(a * 235)];
+      return a <= 0 ? [0, 0, 0, 0] : [...colorFor(op), Math.round(a * 235)];
     },
     getWidth: 2.2, widthUnits: "pixels", widthMinPixels: 1.2,
     capRounded: true, jointRounded: true, pickable: true,
-    updateTriggers: { getColor: [year, showMode.land, showMode.water] },
+    updateTriggers: { getColor: [year, showMode.land, showMode.water, opVer] },
   });
   const stopLayer = new deck.ScatterplotLayer({
     id: "stops", data: stops, visible: showStops,
@@ -147,12 +157,16 @@ function makeLayers() {
     getFillColor: (f) => {
       const m = f.properties.modes;
       if (m && !((m.land && showMode.land) || (m.water && showMode.water))) return [0, 0, 0, 0];
+      if (visibleOps !== null) {
+        const o = f.properties.ops;
+        if (!(o && o.some((id) => visibleOps.has(id)))) return [0, 0, 0, 0];
+      }
       const a = stopAlpha(f.properties, year);
       return a <= 0 ? [0, 0, 0, 0] : [245, 225, 196, Math.round(a * 230)];
     },
     getRadius: 2.6, radiusUnits: "pixels", radiusMinPixels: 1.6, radiusMaxPixels: 5,
     stroked: false, pickable: true,
-    updateTriggers: { getFillColor: [year, showMode.land, showMode.water] },
+    updateTriggers: { getFillColor: [year, showMode.land, showMode.water, opVer] },
   });
   return [edgeLayer, stopLayer];
 }
@@ -175,16 +189,64 @@ function render() {
 }
 
 /* ---------- ui ---------- */
+/* Each operator is a checkbox (multi-select) whose name/swatch also acts as a
+   "solo" — click it to see only that operator's network evolve. */
 function buildLegend(agencies) {
   const ul = $("ops");
   ul.innerHTML = "";
+  allOpIds = agencies.map((a) => a.id);
+  for (const k in opRows) delete opRows[k];
   agencies.forEach((a) => {
     const li = document.createElement("li");
-    if (a.pseudo) li.className = "pseudo";
+    li.className = a.pseudo ? "pseudo" : "";
     const era = a.from ? `${a.from}–${a.to || ""}` : "";
-    li.innerHTML = `<span class="sw" style="background:${a.color};color:${a.color}"></span>${a.name.split("(")[0].trim()}<span class="era">${era}</span>`;
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.className = "op-cb"; cb.checked = true;
+    const sw = document.createElement("span");
+    sw.className = "sw"; sw.style.background = a.color; sw.style.color = a.color;
+    const nm = document.createElement("span");
+    nm.className = "op-name"; nm.textContent = a.name.split("(")[0].trim();
+    nm.title = a.name;
+    const er = document.createElement("span");
+    er.className = "era"; er.textContent = era;
+    li.append(cb, sw, nm, er);
+    cb.addEventListener("change", () => toggleOp(a.id, cb.checked));
+    const solo = () => soloOp(a.id);
+    nm.addEventListener("click", solo);
+    sw.addEventListener("click", solo);
     ul.appendChild(li);
+    opRows[a.id] = { li, cb };
   });
+  syncLegend();
+}
+function applyOpFilter() { opVer++; syncLegend(); render(); }
+function toggleOp(id, checked) {
+  if (visibleOps === null) visibleOps = new Set(allOpIds);
+  if (checked) visibleOps.add(id); else visibleOps.delete(id);
+  if (visibleOps.size >= allOpIds.length) visibleOps = null;   // all on -> no filter
+  applyOpFilter();
+}
+function soloOp(id) {
+  visibleOps = (visibleOps && visibleOps.size === 1 && visibleOps.has(id)) ? null : new Set([id]);
+  applyOpFilter();
+}
+function resetOps() { visibleOps = null; applyOpFilter(); }
+function syncLegend() {
+  for (const id in opRows) {
+    const on = opShown(id);
+    opRows[id].cb.checked = on;
+    opRows[id].li.classList.toggle("op-off", !on);
+  }
+  const btn = $("ops-reset");
+  if (btn) btn.hidden = visibleOps === null;
+}
+function filterLegend(q) {
+  q = (q || "").trim().toLowerCase();
+  for (const id in opRows) {
+    const li = opRows[id].li;
+    const nm = li.querySelector(".op-name");
+    li.style.display = (!q || (nm && nm.textContent.toLowerCase().includes(q))) ? "" : "none";
+  }
 }
 /* mode toggles (Trains / Maritime) — only shown when a feed mixes modes */
 function buildModeToggles(present) {
@@ -409,6 +471,7 @@ function assemble() {
   const rAg = {}; if (T.routes) T.routes.forEach((r) => rAg[r.route_id] = { agency: r.agency_id, open: yr(r.date_opened), closed: yr(r.date_closed), type: r.route_type });
 
   const stopMode = {};   // stop_id -> {land?,water?} : which modes touch each stop
+  const stopOps = {};    // stop_id -> Set(agency ids) touching it (for operator filter)
   if (T.geoEdges) { edges = T.geoEdges; edges.forEach((f) => { f.properties.mode = f.properties.mode || "land"; }); }
   else if (T.edges) edges = T.edges.map((e) => {
     const a = coords[e.from_stop_id], b = coords[e.to_stop_id]; if (!a || !b) return null;
@@ -418,11 +481,19 @@ function assemble() {
     const mode = ra ? modeOf(ra.type) : "land";
     (stopMode[e.from_stop_id] = stopMode[e.from_stop_id] || {})[mode] = true;
     (stopMode[e.to_stop_id] = stopMode[e.to_stop_id] || {})[mode] = true;
+    ops.forEach((o) => {
+      if (!o.agency) return;
+      (stopOps[e.from_stop_id] = stopOps[e.from_stop_id] || new Set()).add(o.agency);
+      (stopOps[e.to_stop_id] = stopOps[e.to_stop_id] || new Set()).add(o.agency);
+    });
     return { type: "Feature", geometry: { type: "LineString", coordinates: [a, b] },
       properties: { route_id: e.route_id, line: e.line_name, open: yr(e.date_opened), closed: yr(e.date_closed), operators: ops, mode } };
   }).filter(Boolean);
   else edges = [];
-  stops.forEach((f) => { f.properties.modes = stopMode[f.properties.id] || null; });
+  stops.forEach((f) => {
+    f.properties.modes = stopMode[f.properties.id] || null;
+    f.properties.ops = stopOps[f.properties.id] ? [...stopOps[f.properties.id]] : null;
+  });
   buildModeToggles(new Set(edges.map((e) => e.properties.mode)));
 
   const have = new Set(ags.map((a) => a.id));
@@ -523,6 +594,8 @@ $("toggle-stops").addEventListener("change", (e) => {
   $("stops-toggle").classList.toggle("off", !showStops);
   render();
 });
+$("ops-reset").addEventListener("click", resetOps);
+$("ops-search").addEventListener("input", (e) => filterLegend(e.target.value));
 
 /* ---------- optional: launch a feed straight from a GitHub repo via jsDelivr ----------
    URL forms:  ?repo=org/repo[@ref]   |   #org/repo[@ref]   |   /org/repo/ (via 404.html)
