@@ -129,6 +129,8 @@ body {
 .credit {
   position: absolute; right: 12px; bottom: 6px; z-index: 4;
   font-size: 10px; color: rgba(154,162,173,0.5);
+  max-width: min(62vw, 680px); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
 }
 
 /* drag & drop loader */

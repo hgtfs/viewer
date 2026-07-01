@@ -14,6 +14,71 @@ let stops = [], edges = [], events = [], agencyById = {}, overlay = null, mapRea
 
 const $ = (id) => document.getElementById(id);
 
+/* ---------- i18n: follow the browser language (it / en, en fallback) ------- */
+const LANG = (navigator.languages && navigator.languages[0] || navigator.language || "en")
+  .toLowerCase().startsWith("it") ? "it" : "en";
+const STR = {
+  it: {
+    title: "HGTFS Viewer — la rete ferroviaria nel tempo",
+    desc: "Visualizzatore time-aware per feed HGTFS: scorri gli anni e guarda una rete ferroviaria storica aprirsi, chiudersi e cambiare operatore.",
+    dataset: "Rete ferroviaria storica",
+    op: "Operatore", uncert: "Incertezza",
+    uncertOpen: "apertura<br>incerta", uncertConf: "confermata",
+    note: "Le stazioni sfumano lungo la loro finestra di apertura: i dati storici sono datati per intervalli, non per giorno.",
+    dropH: "Trascina qui un feed HGTFS",
+    dropP: "uno <b>.zip</b> HGTFS — oppure i singoli file (stops, routes, network_edges, agency)",
+    browse: "sfoglia…",
+    dropGh: "o carica da GitHub: <code>?repo=org/repo</code> · <code>/org/repo/</code>",
+    credit: "dati: feed HGTFS caricato · mappa base: © CARTO, © OpenStreetMap",
+    dataLabel: "dati", basemap: "mappa base",
+    stations: "stazioni", segments: "tratte", operators: "operatori",
+    opened: "apertura", closed: "chiusura",
+    incomplete: "feed incompleto — servono stops e network_edges",
+    ghReading: "lettura struttura {repo}…",
+    ghLoading: "caricamento {repo} ({n} file)…",
+    ghNone: "nessun feed HGTFS in {repo}",
+  },
+  en: {
+    title: "HGTFS Viewer — the railway network through time",
+    desc: "Time-aware viewer for HGTFS feeds: scrub the years and watch a historical railway network open, close and change operator.",
+    dataset: "Historical railway network",
+    op: "Operator", uncert: "Uncertainty",
+    uncertOpen: "uncertain<br>opening", uncertConf: "confirmed",
+    note: "Stations fade in across their opening window: historical data is dated by interval, not by day.",
+    dropH: "Drop an HGTFS feed here",
+    dropP: "an HGTFS <b>.zip</b> — or the individual files (stops, routes, network_edges, agency)",
+    browse: "browse…",
+    dropGh: "or load from GitHub: <code>?repo=org/repo</code> · <code>/org/repo/</code>",
+    credit: "data: loaded HGTFS feed · base map: © CARTO, © OpenStreetMap",
+    dataLabel: "data", basemap: "base map",
+    stations: "stations", segments: "segments", operators: "operators",
+    opened: "opened", closed: "closed",
+    incomplete: "incomplete feed — needs stops and network_edges",
+    ghReading: "reading structure of {repo}…",
+    ghLoading: "loading {repo} ({n} files)…",
+    ghNone: "no HGTFS feed in {repo}",
+  },
+};
+function t(k, vars) {
+  let s = (STR[LANG] && STR[LANG][k] != null) ? STR[LANG][k] : (STR.en[k] != null ? STR.en[k] : k);
+  if (vars) for (const p in vars) s = s.split("{" + p + "}").join(vars[p]);
+  return s;
+}
+const NUM = (n) => n.toLocaleString(LANG);
+function setDatasetLabel() {
+  const el = $("dataset");
+  if (el) el.textContent = dataReady ? `${t("dataset")} · ${MIN}–${MAX}` : t("dataset");
+}
+function applyStaticI18n() {
+  document.documentElement.lang = LANG;
+  document.title = t("title");
+  const md = document.querySelector('meta[name="description"]');
+  if (md) md.setAttribute("content", t("desc"));
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+  setDatasetLabel();
+}
+
 /* ---------- helpers ---------- */
 function hexToRgb(h) {
   const n = parseInt(h.slice(1), 16);
@@ -78,7 +143,7 @@ function render() {
   let ns = 0, ne = 0;
   for (const f of stops) if (stopAlpha(f.properties, year) > 0.05) ns++;
   for (const f of edges) if (edgeAlpha(f.properties, year) > 0.05) ne++;
-  $("counts").textContent = `${ns.toLocaleString("it")} stazioni · ${ne.toLocaleString("it")} tratte`;
+  $("counts").textContent = `${NUM(ns)} ${t("stations")} · ${NUM(ne)} ${t("segments")}`;
   $("year").textContent = year;
   $("slider").value = year;
   $("slider").style.setProperty("--pct", `${((year - MIN) / (MAX - MIN)) * 100}%`);
@@ -126,14 +191,23 @@ function eventAt(y) {
   }
   return span || last;
 }
-/* events.txt frames the contextual start/end of the timeline */
+/* The timeline must reach every dated entity. events.txt frames the contextual
+   start/end, but the bounds are widened so no stop or edge ever falls past the
+   slider's max (otherwise the last cohort — e.g. 1870 — is unreachable). */
 function applyBounds() {
+  let lo = Infinity, hi = -Infinity;
   if (events.length) {
-    MIN = Math.min(...events.map((e) => e.date));
-    MAX = Math.max(...events.map((e) => e.end || e.date));
-  } else { MIN = 1839; MAX = 1930; }
+    lo = Math.min(...events.map((e) => e.date));
+    hi = Math.max(...events.map((e) => e.end || e.date));
+  }
+  const see = (v) => { if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; } };
+  for (const f of stops) { const p = f.properties; see(p.open_min); see(p.open_max); see(p.closed); }
+  for (const e of edges) { const p = e.properties; see(p.open); see(p.closed); }
+  if (!isFinite(lo) || !isFinite(hi)) { lo = 1839; hi = 1930; }
+  MIN = lo; MAX = hi;
   const sl = $("slider"); sl.min = MIN; sl.max = MAX;
   year = Math.max(MIN, Math.min(MAX, year));
+  setDatasetLabel();
 }
 function setPlaying(on) {
   playing = on;
@@ -146,8 +220,22 @@ function setPlaying(on) {
 /* ---------- boot ---------- */
 const map = new maplibregl.Map({
   container: "map", style: BASEMAP, center: [12.4, 42.3], zoom: 5.1,
-  attributionControl: false, maxZoom: 12, minZoom: 4,
+  attributionControl: false, maxZoom: 12, minZoom: 2,
 });
+/* the viewer is dataset-agnostic — frame whatever feed gets loaded, once */
+let fitted = false;
+function fitToData() {
+  if (fitted || !mapReady || !stops.length) return;
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+  for (const f of stops) {
+    const c = f.geometry.coordinates;
+    if (c[0] < minx) minx = c[0]; if (c[1] < miny) miny = c[1];
+    if (c[0] > maxx) maxx = c[0]; if (c[1] > maxy) maxy = c[1];
+  }
+  if (!isFinite(minx)) return;
+  fitted = true;
+  map.fitBounds([[minx, miny], [maxx, maxy]], { padding: 64, duration: 700, maxZoom: 9 });
+}
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 map.on("load", () => {
   overlay = new deck.MapboxOverlay({
@@ -155,16 +243,18 @@ map.on("load", () => {
     getTooltip: ({ object, layer }) => {
       if (!object) return null;
       const p = object.properties;
-      if (layer.id === "stops") return { html: `<b>${p.name}</b><br>apertura: ${fmtOpen(p)}` };
+      if (layer.id === "stops") return { html: `<b>${p.name}</b><br>${t("opened")}: ${fmtOpen(p)}` };
       const op = operatorAtYear(p.operators, year);
-      return { html: `<b>${p.line || p.route_id}</b><br><span class="t-op">${year} · ${agencyName(op)}</span><br>aperta: ${p.open || "?"}${p.closed ? " · chiusa: " + p.closed : ""}` };
+      return { html: `<b>${p.line || p.route_id}</b><br><span class="t-op">${year} · ${agencyName(op)}</span><br>${t("opened")}: ${p.open || "?"}${p.closed ? " · " + t("closed") + ": " + p.closed : ""}` };
     },
   });
   map.addControl(overlay);
   mapReady = true;
+  fitToData();
   render();
 });
 
+applyStaticI18n();
 buildTicks();
 
 /* ---------- data loading: drag & drop a HGTFS .zip (or loose files) ---------- */
@@ -218,12 +308,16 @@ function classify(base, rows) {
   if (!rows.length) return null;
   const cols = new Set(Object.keys(rows[0]));
   const has = (...k) => k.every((x) => cols.has(x));
+  if (cols.has("feed_publisher_name")) return "feedinfo";
+  if (has("source_id", "source_name")) return "sources";
   if (has("agency_id", "agency_name")) return "agency";
   if (cols.has("stop_id") && (cols.has("stop_lat") || cols.has("stop_lon"))) return "stops";
   if (has("from_stop_id", "to_stop_id")) return "edges";
   if (cols.has("valid_from") || cols.has("valid_to")) return "routeops";
   if (cols.has("name") && (cols.has("date") || cols.has("year")) && !cols.has("route_id") && !cols.has("stop_id")) return "events";
   if (cols.has("route_id") && (cols.has("route_type") || cols.has("route_long_name") || cols.has("agency_id"))) return "routes";
+  if (/feed_info/.test(base)) return "feedinfo";
+  if (/historical_sources|sources/.test(base)) return "sources";
   if (/agency/.test(base)) return "agency";
   if (/event/.test(base)) return "events";
   if (/stop/.test(base)) return "stops";
@@ -290,19 +384,47 @@ function assemble() {
     : [];
   applyBounds();
   buildTicks();
+  setCredit();
+}
+
+/* Attribution comes from the feed itself (HGTFS feed_info.txt publisher +
+   historical_sources.txt), so the viewer stays dataset-agnostic. Falls back to
+   the generic base-map credit when the feed carries no provenance. */
+function feedCredit() {
+  const fi = (T.feedinfo && T.feedinfo[0]) || null;
+  const pub = fi ? (fi.feed_publisher_name || "").trim() : "";
+  const seen = new Set(), srcs = [];
+  (T.sources || []).forEach((s) => {
+    const n = (s.source_name || "").trim();
+    if (n && !seen.has(n)) { seen.add(n); srcs.push(n); }
+  });
+  const bits = [];
+  if (pub) bits.push(pub);
+  bits.push(...srcs);
+  if (!bits.length) return null;
+  return `${t("dataLabel")}: ${bits.join(" · ")} · ${t("basemap")}: © CARTO, © OpenStreetMap`;
+}
+function setCredit() {
+  const el = document.querySelector(".credit");
+  if (!el) return;
+  el.textContent = feedCredit() || t("credit");
+  el.title = el.textContent;
 }
 
 function updateDropStatus() {
-  const items = [["stazioni", stops.length], ["tratte", edges.length], ["operatori", Object.keys(agencyById).length]];
+  const items = [[t("stations"), stops.length], [t("segments"), edges.length], [t("operators"), Object.keys(agencyById).length]];
   let html = items.map(([n, c]) => `<li class="${c ? "ok" : ""}">${c ? "✓" : "○"} ${n}${c ? ` · ${c}` : ""}</li>`).join("");
   if (loadErr) html += `<li class="err">⚠ ${loadErr}</li>`;
   else if (Object.keys(T).length && (!stops.length || !edges.length))
-    html += `<li class="err">⚠ feed incompleto — servono stops e network_edges</li>`;
+    html += `<li class="err">⚠ ${t("incomplete")}</li>`;
   $("dropstatus").innerHTML = html;
 }
 function tryReady() {
   assemble(); updateDropStatus();
-  if (stops.length && edges.length) { dataReady = true; document.body.classList.add("loaded"); render(); }
+  if (stops.length && edges.length) {
+    dataReady = true; document.body.classList.add("loaded");
+    setDatasetLabel(); fitToData(); render();
+  }
 }
 function skip(path) {       // directories, macOS metadata, dotfiles / AppleDouble
   if (path.endsWith("/") || /(^|\/)__MACOSX\//.test(path)) return true;
@@ -345,7 +467,7 @@ $("play").addEventListener("click", () => setPlaying(!playing));
    URL forms:  ?repo=org/repo[@ref]   |   #org/repo[@ref]   |   /org/repo/ (via 404.html)
    The repo's file structure is read from the jsDelivr data API, the HGTFS files are
    picked by name, and fetched from the jsDelivr CDN. */
-const FEED_RE = /(?:^|\/)(agency|stops|routes|network_edges|events|route_operators|agencies)\.(txt|csv|json)$|\.geojson$/i;
+const FEED_RE = /(?:^|\/)(agency|stops|routes|network_edges|events|route_operators|agencies|feed_info|historical_sources)\.(txt|csv|json)$|\.geojson$/i;
 function setMsg(t) { $("dropstatus").innerHTML = `<li>${t}</li>`; }
 
 async function loadFromGh(spec) {
@@ -356,11 +478,11 @@ async function loadFromGh(spec) {
   if (!org || !repo) return;
   for (const ref of (ref0 ? [ref0] : ["main", "master"])) {
     try {
-      setMsg(`lettura struttura ${org}/${repo}@${ref}…`);
+      setMsg(t("ghReading", { repo: `${org}/${repo}@${ref}` }));
       const meta = await fetch(`https://data.jsdelivr.com/v1/packages/gh/${org}/${repo}@${ref}?structure=flat`).then((r) => r.ok ? r.json() : null);
       const wanted = (meta && meta.files || []).map((f) => f.name).filter((n) => FEED_RE.test(n));
       if (!wanted.length) continue;
-      setMsg(`caricamento ${org}/${repo}@${ref} (${wanted.length} file)…`);
+      setMsg(t("ghLoading", { repo: `${org}/${repo}@${ref}`, n: wanted.length }));
       loadErr = "";
       for (const n of wanted) {
         try { stash(n.split("/").pop(), await fetch(`https://cdn.jsdelivr.net/gh/${org}/${repo}@${ref}${n}`).then((r) => r.text())); }
@@ -370,7 +492,7 @@ async function loadFromGh(spec) {
       if (stops.length && edges.length) return;
     } catch (e) { console.error(e); }
   }
-  loadErr = `nessun feed HGTFS in ${org}/${repo}`; updateDropStatus();
+  loadErr = t("ghNone", { repo: `${org}/${repo}` }); updateDropStatus();
 }
 function targetFromUrl() {
   const q = new URLSearchParams(location.search).get("repo") || new URLSearchParams(location.search).get("gh");

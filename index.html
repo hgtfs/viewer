@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>HGTFS Viewer — la rete ferroviaria italiana nel tempo</title>
-  <meta name="description" content="Visualizzatore time-aware per HGTFS: scorri gli anni e guarda la rete ferroviaria aprirsi, chiudersi e cambiare operatore." />
+  <title>HGTFS Viewer</title>
+  <meta name="description" content="Time-aware viewer for HGTFS feeds: scrub the years and watch a historical railway network open, close and change operator." />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -19,19 +19,19 @@
   <header class="panel brand">
     <div class="wordmark">HGTFS<span class="dot">.</span></div>
     <div class="sub">Historical GTFS — <em>viewer</em></div>
-    <div class="dataset">Rete ferroviaria italiana · 1839–1930</div>
+    <div class="dataset" id="dataset">Historical railway network</div>
   </header>
 
   <!-- legend -->
   <aside class="panel legend" id="legend">
-    <div class="legend-title">Operatore</div>
+    <div class="legend-title" data-i18n="op">Operatore</div>
     <ul class="ops" id="ops"></ul>
-    <div class="legend-title">Incertezza</div>
+    <div class="legend-title" data-i18n="uncert">Incertezza</div>
     <div class="uncert">
       <span class="ramp"></span>
-      <div class="uncert-labels"><span>apertura<br>incerta</span><span>confermata</span></div>
+      <div class="uncert-labels"><span data-i18n-html="uncertOpen">apertura<br>incerta</span><span data-i18n-html="uncertConf">confermata</span></div>
     </div>
-    <p class="note">Le stazioni sfumano lungo la loro finestra di apertura: i dati storici sono datati per intervalli, non per giorno.</p>
+    <p class="note" data-i18n="note">Le stazioni sfumano lungo la loro finestra di apertura: i dati storici sono datati per intervalli, non per giorno.</p>
   </aside>
 
   <!-- timeline -->
@@ -48,17 +48,17 @@
     </div>
   </footer>
 
-  <div class="credit">dati: stazioni.xlsx · ViaggiaTreno · OpenStreetMap/Nominatim · Wikidata — base: © CARTO, © OpenStreetMap</div>
+  <div class="credit" data-i18n="credit">dati: feed HGTFS caricato · mappa base: © CARTO, © OpenStreetMap</div>
 
   <!-- drag & drop loader: data is not bundled, drop the HGTFS files to load them -->
   <div class="drop" id="drop">
     <div class="drop-card">
       <div class="drop-ic">⤓</div>
-      <div class="drop-h">Trascina qui un feed HGTFS</div>
-      <div class="drop-p">uno <b>.zip</b> HGTFS — oppure i singoli file (stops, routes, network_edges, agency)</div>
-      <label class="browse-btn">sfoglia…<input id="browse" type="file" accept=".zip,.txt,.csv,.geojson,.json,application/zip,application/json" multiple hidden /></label>
+      <div class="drop-h" data-i18n="dropH">Trascina qui un feed HGTFS</div>
+      <div class="drop-p" data-i18n-html="dropP">uno <b>.zip</b> HGTFS — oppure i singoli file (stops, routes, network_edges, agency)</div>
+      <label class="browse-btn"><span data-i18n="browse">sfoglia…</span><input id="browse" type="file" accept=".zip,.txt,.csv,.geojson,.json,application/zip,application/json" multiple hidden /></label>
       <ul class="drop-status" id="dropstatus"></ul>
-      <div class="drop-gh">o carica da GitHub: <code>?repo=org/repo</code> · <code>/org/repo/</code></div>
+      <div class="drop-gh" data-i18n-html="dropGh">o carica da GitHub: <code>?repo=org/repo</code> · <code>/org/repo/</code></div>
     </div>
   </div>
 
