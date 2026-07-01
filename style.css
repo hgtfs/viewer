@@ -52,13 +52,29 @@ body {
 }
 
 /* legend */
-.legend { top: 18px; right: 18px; padding: 14px 16px; width: 232px; }
+.legend { top: 18px; right: 18px; padding: 14px 16px; width: 232px; max-height: calc(100vh - 36px); overflow: hidden; }
 .legend-title {
   font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px;
   color: var(--faint); margin: 2px 0 8px;
 }
 .legend-title:not(:first-child) { margin-top: 14px; }
-.ops { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+/* layer toggles */
+.lg-toggle {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+  font-size: 12.5px; color: var(--ink); margin: 0 0 12px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--glass-brd);
+}
+.lg-toggle input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; flex: none; }
+.lg-toggle.off { color: var(--faint); }
+/* operator list: scrolls when a feed has many operators (e.g. the US, ~1000) */
+.ops {
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 5px;
+  max-height: 40vh; overflow-y: auto; padding-right: 6px;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent;
+}
+.ops::-webkit-scrollbar { width: 8px; }
+.ops::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
+.ops::-webkit-scrollbar-track { background: transparent; }
 .ops li { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ink); }
 .ops .sw { width: 18px; height: 4px; border-radius: 3px; flex: none; }
 .ops li.pseudo { color: var(--muted); }

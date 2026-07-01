@@ -12,6 +12,7 @@ const TICKS = [   // fallback timeline marks when no events.txt is loaded
 let year = 1876, playing = false, timer = null;
 let stops = [], edges = [], events = [], agencyById = {}, overlay = null, mapReady = false, dataReady = false;
 let currentRepo = null;   // repo spec kept in the shareable hash, when loaded from GitHub
+let showStops = true;     // stations layer visibility (toggle in the legend)
 
 const $ = (id) => document.getElementById(id);
 
@@ -33,6 +34,7 @@ const STR = {
     credit: "dati: feed HGTFS caricato · mappa base: © CARTO, © OpenStreetMap",
     dataLabel: "dati", basemap: "mappa base",
     stations: "stazioni", segments: "tratte", operators: "operatori",
+    stopsToggle: "Stazioni",
     opened: "apertura", closed: "chiusura",
     incomplete: "feed incompleto — servono stops e network_edges",
     ghReading: "lettura struttura {repo}…",
@@ -53,6 +55,7 @@ const STR = {
     credit: "data: loaded HGTFS feed · base map: © CARTO, © OpenStreetMap",
     dataLabel: "data", basemap: "base map",
     stations: "stations", segments: "segments", operators: "operators",
+    stopsToggle: "Stations",
     opened: "opened", closed: "closed",
     incomplete: "incomplete feed — needs stops and network_edges",
     ghReading: "reading structure of {repo}…",
@@ -128,7 +131,7 @@ function makeLayers() {
     updateTriggers: { getColor: year },
   });
   const stopLayer = new deck.ScatterplotLayer({
-    id: "stops", data: stops,
+    id: "stops", data: stops, visible: showStops,
     getPosition: (f) => f.geometry.coordinates,
     getFillColor: (f) => { const a = stopAlpha(f.properties, year); return a <= 0 ? [0, 0, 0, 0] : [245, 225, 196, Math.round(a * 230)]; },
     getRadius: 2.6, radiusUnits: "pixels", radiusMinPixels: 1.6, radiusMaxPixels: 5,
@@ -472,6 +475,11 @@ updateDropStatus();
 
 $("slider").addEventListener("input", (e) => { year = +e.target.value; if (playing) setPlaying(false); render(); });
 $("play").addEventListener("click", () => setPlaying(!playing));
+$("toggle-stops").addEventListener("change", (e) => {
+  showStops = e.target.checked;
+  $("stops-toggle").classList.toggle("off", !showStops);
+  render();
+});
 
 /* ---------- optional: launch a feed straight from a GitHub repo via jsDelivr ----------
    URL forms:  ?repo=org/repo[@ref]   |   #org/repo[@ref]   |   /org/repo/ (via 404.html)
